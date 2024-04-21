@@ -3,11 +3,21 @@
 
 using boost::asio::ip::tcp;
 
-std::string read_(tcp::socket & socket) {
+#define LOOP while(true)
+
+#define LOG(msg) (std::cout  << msg << std::endl)
+
+bool read_(tcp::socket & socket, std::string &data) {
 	boost::asio::streambuf buf;
-	boost::asio::read_until( socket, buf, "\n" );
-	std::string data = boost::asio::buffer_cast<const char*>(buf.data());
-	return data;
+	try {
+		boost::asio::read_until( socket, buf, "\n" );
+	} catch (const boost::system::system_error &e) {
+		std::cerr << "Error reading from socket: " << e.what() << std::endl;
+		return "";
+	}
+
+	data = boost::asio::buffer_cast<const char*>(buf.data());
+	return data.find("/favicon") == std::string::npos;
 }
 
 void send_(tcp::socket & socket, const std::string& message) {
@@ -15,21 +25,33 @@ void send_(tcp::socket & socket, const std::string& message) {
 	boost::asio::write( socket, boost::asio::buffer(message) );
 }
 
+void parsePort(const int &args, char** const &argv, int &port) {
+	if (args == 2) {
+		// TODO: Error handle
+		std::size_t pos;
+		port = std::stoi(argv[1], &pos);
+	}
+}
+
 int main(int args, char* argv[])
 {
-	std::cout << "Server is running!" << std::endl;
+	int port = 8080;
+	parsePort(args, argv, port);
 
 	boost::asio::io_service io_service;
-	tcp::endpoint endpoint(tcp::v4(), 8080);
+	tcp::endpoint endpoint(tcp::v4(), port);
 	tcp::acceptor acceptor_(io_service, endpoint);
 
-	while(true) {
+	LOG("Server is runnning! Port: " << port << "\n");
+
+	LOOP {
 		tcp::socket socket_(io_service);
 		acceptor_.accept(socket_);
 
-		std::string message = read_(socket_);
-		std::cout << "Received message: " << message << std::endl;
+		std::string message;
+		if (!read_(socket_, message)) continue;
 
+		LOG("Message received:\n" << message);
 		if (message.find("/hello") != std::string::npos) {
 			send_(socket_, "Hello from Server!");
 		} else if (message.find("/bye") != std::string::npos) {
@@ -39,7 +61,7 @@ int main(int args, char* argv[])
 			send_(socket_, "Invalid path!");
 		}
 
-		std::cout << "Server sent Hello message to Client!" << std::endl;
+		LOG("Server responded to Client!");
 	}
 		
 	return 0;
